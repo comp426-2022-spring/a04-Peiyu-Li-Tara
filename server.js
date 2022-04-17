@@ -47,7 +47,7 @@ const morgan = require('morgan')
 const fs = require("fs")
 const db = require("./database.js")
 const args = require('minimist')(process.argv.slice(2))
-var port = args['port'] || process.env.PORT || 5000
+var port = args['port'] || args.p || 5000
 const help = (`
 server.js [options]
 
