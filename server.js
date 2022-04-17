@@ -41,8 +41,10 @@ return {flips: flips, summary: summary}
 }
 
 
-const express = require('express');
+const express = require('express')
 const app = express()
+const morgan = require('morgan')
+const fs = require("fs")
 const db = require("./database.js")
 const args = require('minimist')(process.argv.slice(2))
 var port = args['port'] || process.env.PORT || 5000
@@ -65,9 +67,43 @@ if (args.help || args.h) {
     process.exit(0)
 }
 
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
 const server = app.listen(port, () => {
     console.log('App listening on port %port%'.replace('%port%',port))
 });
+
+// If --log=false then do not create a log file
+if (args.log == 'false') {
+    console.log("NOTICE: not creating file access.log")
+} else {
+// Use morgan for logging to files
+// Create a write stream to append to an access.log file
+    const accessLog = fs.createWriteStream('access.log', { flags: 'a' })
+// Set up the access logging middleware
+    app.use(morgan('combined', { stream: accessLog }))
+}
+// Always log to database
+app.use((req, res, next) => {
+    let logdata = {
+        remoteaddr: req.ip,
+        remoteuser: req.user,
+        time: Date.now(),
+        method: req.method,
+        url: req.url,
+        protocol: req.protocol,
+        httpversion: req.httpVersion,
+        status: res.statusCode,
+        referrer: req.headers['referer'],
+        useragent: req.headers['user-agent']
+    };
+    console.log(logdata)
+    const stmt = db.prepare('INSERT INTO accesslog (remoteaddr, remoteuser, time, method, url, protocol, httpversion, status, referrer, useragent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    const info = stmt.run(logdata.remoteaddr, logdata.remoteuser, logdata.time, logdata.method, logdata.url, logdata.protocol, logdata.httpversion, logdata.status, logdata.referrer, logdata.useragent)
+    //console.log(info)
+    next();
+})
 
 app.get('/app', (req, res, next) => {
     res.statusCode = 200;
@@ -76,7 +112,7 @@ app.get('/app', (req, res, next) => {
     res.end(res.statusCode+ ' ' +res.statusMessage)
 }); 
 
-app.get('/app/flip', (req, res, next) => {
+app.get('/app/flip', (req, res) => {
 	var flip = coinFlip()
 	res.status(200).json({ 'flip': flip })
 });
@@ -107,7 +143,7 @@ if (args.debug || args.d) {
     })
 }
 
-app.use(function(req, res, nexts){
+app.use(function(req, res){
     const statusCode = 404
     const statusMessage = 'NOT FOUND'
     res.status(statusCode).end(statusCode+ ' ' +statusMessage)
